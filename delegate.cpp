@@ -40,6 +40,7 @@ int main() {
 		inputBuffer.push_back(input);
 	}
 
-	for (auto i : inputBuffer)
-		cout << i << endl;
+	for (auto i : inputBuffer) {
+		cout << "sa2a(" << i << ") = " << sa2a(i) << endl;
+	}
 }
