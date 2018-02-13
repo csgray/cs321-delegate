@@ -9,6 +9,7 @@ using std::cout;
 using std::endl;
 #include <limits>
 #include <mutex>
+using std::lock_guard;
 using std::mutex;
 #include <thread>
 using std::thread;
@@ -17,12 +18,34 @@ using std::vector;
 
 #include "sa2a.h"	// For "int sa2a(int)"
 
+// Constants
+const int NUMBER_THREADS = 6;
+vector<int> inputBuffer;
+int sa2aInput;
+int sa2aOutput;
+mutex outputMutex;
+
+int threadID = 0;
+
+// run
+// Run function for spawned threads.
+// Calls sa2a on the provider value.
+void run(int value) {
+	lock_guard<mutex> outputGuard(outputMutex); 
+	threadID++;
+	sa2aInput = value;
+	sa2aOutput = sa2a(value);
+	cout << "sa2a(" << sa2aInput << ") = " << sa2aOutput << " by " << threadID << endl;
+}
+
 int main() {
 	cout << "Delegated Computation" << endl;
-	
-	int input;
-	vector<int> inputBuffer;
 
+	// Spawn worker threads
+	vector<thread> workerPool (NUMBER_THREADS);
+
+	// User Input
+	int input;
 	while (true) {
 		cout << "Enter a positive integer (or 0 to end input): ";
 		cin >> input;
@@ -40,7 +63,29 @@ int main() {
 		inputBuffer.push_back(input);
 	}
 
-	for (auto i : inputBuffer) {
-		cout << "sa2a(" << i << ") = " << sa2a(i) << endl;
+	// Delegate computations to workers
+	auto currentItem = inputBuffer.begin();
+	for (auto & currentWorker : workerPool) {
+		currentWorker = thread(run, *currentItem);
+		currentItem++;
+		if (currentItem == inputBuffer.end())
+			break;
+	}
+
+	// Retask threads if input remains
+	for (auto & currentWorker : workerPool) {
+		if (currentWorker.joinable())
+			currentWorker.join();
+
+		if (currentItem != inputBuffer.end()) {
+			currentWorker = thread(run, *currentItem);
+			currentItem++;
+		}
+	}
+
+	// Join all threads before exiting
+	for (auto & worker : workerPool) {
+		if (worker.joinable())
+			worker.join();
 	}
 }
