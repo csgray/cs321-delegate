@@ -3,6 +3,8 @@
 // 02 February 2018
 // Source code for Assignment 2: Delegated Computation program
 
+#include <atomic>
+using std::atomic_int;
 #include <iostream>
 using std::cin;
 using std::cout;
@@ -25,17 +27,15 @@ int sa2aInput;
 int sa2aOutput;
 mutex outputMutex;
 
-int threadID = 0;
-
 // run
 // Run function for spawned threads.
 // Calls sa2a on the provider value.
 void run(int value) {
+	auto output = sa2a(value);
 	lock_guard<mutex> outputGuard(outputMutex); 
-	threadID++;
 	sa2aInput = value;
-	sa2aOutput = sa2a(value);
-	cout << "sa2a(" << sa2aInput << ") = " << sa2aOutput << " by " << threadID << endl;
+	sa2aOutput = output;
+	cout << "sa2a(" << sa2aInput << ") = " << sa2aOutput << endl;
 }
 
 int main() {
