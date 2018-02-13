@@ -3,8 +3,6 @@
 // 02 February 2018
 // Source code for Assignment 2: Delegated Computation program
 
-#include <atomic>
-using std::atomic_int;
 #include <iostream>
 using std::cin;
 using std::cout;
@@ -63,9 +61,8 @@ int main() {
 		inputBuffer.push_back(input);
 	}
 
-	// Delegate computations to workers
 	auto currentItem = inputBuffer.begin();
-	// Assign first round of workers
+	// Delegate first round of computations to workers
 	for (auto & currentWorker : workerPool) {
 		currentWorker = thread(run, *currentItem);
 		currentItem++;
