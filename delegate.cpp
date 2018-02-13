@@ -65,6 +65,7 @@ int main() {
 
 	// Delegate computations to workers
 	auto currentItem = inputBuffer.begin();
+	// Assign first round of workers
 	for (auto & currentWorker : workerPool) {
 		currentWorker = thread(run, *currentItem);
 		currentItem++;
@@ -72,20 +73,22 @@ int main() {
 			break;
 	}
 
-	// Retask threads if input remains
-	for (auto & currentWorker : workerPool) {
-		if (currentWorker.joinable())
-			currentWorker.join();
-
-		if (currentItem != inputBuffer.end()) {
-			currentWorker = thread(run, *currentItem);
-			currentItem++;
+	// Join workers ready to join and reassign tasks so long as tasks remain
+	while (currentItem != inputBuffer.end()) {
+		for (auto & currentWorker : workerPool) {
+			if (currentWorker.joinable()) {
+				currentWorker.join();
+				if (currentItem != inputBuffer.end()) {
+					currentWorker = thread(run, *currentItem);
+					currentItem++;
+				}
+			}			
 		}
 	}
 
-	// Join all threads before exiting
-	for (auto & worker : workerPool) {
-		if (worker.joinable())
-			worker.join();
+	// Make sure all threads join before exiting
+	for (auto & currentWorker : workerPool) {
+		if (currentWorker.joinable())
+			currentWorker.join();
 	}
 }
