@@ -11,6 +11,11 @@ using std::endl;
 #include <mutex>
 using std::lock_guard;
 using std::mutex;
+#include <utility>
+using std::pair;
+using std::make_pair;
+#include <queue>
+using std::queue;
 #include <thread>
 using std::thread;
 #include <vector>
@@ -20,21 +25,35 @@ using std::vector;
 
 // Constants
 const int NUMBER_THREADS = 6;
-vector<int> inputBuffer;
-int sa2aInput;
-int sa2aOutput;
+int totalInputs = 0;
+queue<int> inputBuffer;
+queue<pair<int, int>> outputBuffer;
+mutex inputMutex;
 mutex outputMutex;
 
 // run
 // Run function for spawned threads.
 // Calls sa2a on the provider value.
-void run(int value) {
-	auto output = sa2a(value);
-	lock_guard<mutex> outputGuard(outputMutex); 
-	sa2aInput = value;
-	sa2aOutput = output;
-	cout << "sa2a(" << sa2aInput << ") = " << sa2aOutput << endl;
+void run() {
+	int value = 0;
+	while (!(inputBuffer.empty())) {
+		inputMutex.lock();
+		if (!(inputBuffer.empty())) {
+			value = inputBuffer.front();
+			inputBuffer.pop();
+		}
+		inputMutex.unlock();
+		
+		if (value != 0) {
+			auto output = sa2a(value);
+			lock_guard<mutex> outputGuard(outputMutex);
+			outputBuffer.push(make_pair(value, output));
+		}
+
+		value = 0;
+	}
 }
+
 
 int main() {
 	cout << "Delegated Computation" << endl;
@@ -58,34 +77,25 @@ int main() {
 		else if (input < 1)
 			break;
 	
-		inputBuffer.push_back(input);
+		inputBuffer.push(input);
+		totalInputs++;
 	}
 
-	auto currentItem = inputBuffer.begin();
-	// Delegate first round of computations to workers
-	for (auto & currentWorker : workerPool) {
-		currentWorker = thread(run, *currentItem);
-		currentItem++;
-		if (currentItem == inputBuffer.end())
-			break;
+	// Delegate computations to worker threads
+	for (auto &worker : workerPool)
+		worker = thread(run);
+	
+	// Output results
+	for (int i = 0; i < totalInputs; ++i) {
+		while (outputBuffer.empty());
+
+		auto resultPair = outputBuffer.front();
+		outputBuffer.pop();
+		cout << "sa2a(" << resultPair.first << ") = " << resultPair.second << endl;
 	}
 
-	// Join workers ready to join and reassign tasks so long as tasks remain
-	while (currentItem != inputBuffer.end()) {
-		for (auto & currentWorker : workerPool) {
-			if (currentWorker.joinable()) {
-				currentWorker.join();
-				if (currentItem != inputBuffer.end()) {
-					currentWorker = thread(run, *currentItem);
-					currentItem++;
-				}
-			}			
-		}
-	}
-
-	// Make sure all threads join before exiting
-	for (auto & currentWorker : workerPool) {
-		if (currentWorker.joinable())
-			currentWorker.join();
-	}
+	
+	// Wait for all threads to terminate
+	for (auto &worker : workerPool)
+		worker.join();
 }
