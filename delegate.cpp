@@ -1,101 +1,108 @@
 // delegate.cpp
 // Corey S. Gray
-// 02 February 2018
+// 13 February 2018
 // Source code for Assignment 2: Delegated Computation program
 
-#include <iostream>
-using std::cin;
-using std::cout;
-using std::endl;
-#include <limits>
-#include <mutex>
-using std::lock_guard;
-using std::mutex;
-#include <utility>
-using std::pair;
-using std::make_pair;
-#include <queue>
-using std::queue;
-#include <thread>
-using std::thread;
-#include <vector>
-using std::vector;
+#include <iostream> // For std::cin, std::cout, std::endl, std::streamsize
+#include <limits>   // For std::numeric_limits
+#include <mutex>    // For std::lock_guard, std::mutex
+#include <utility>  // For std::make_pair, std::pair
+#include <queue>    // For std::queue
+#include <thread>   // For std::thread
+#include <vector>   // For std::vector
 
 #include "sa2a.h"	// For "int sa2a(int)"
+#include "delegate.h"
 
-// Constants
+// Constants and global variables
 const int NUMBER_THREADS = 6;
+int input;
 int totalInputs = 0;
-queue<int> inputBuffer;
-queue<pair<int, int>> outputBuffer;
-mutex inputMutex;
-mutex outputMutex;
+std::queue<int> inputQueue;
+std::queue<std::pair<int, int>> outputQueue;
+std::mutex inputMutex;
+std::mutex outputMutex;
 
-// run
-// Run function for spawned threads.
-// Calls sa2a on the provider value.
-void run() {
-	int value = 0;
-	while (!(inputBuffer.empty())) {
-		inputMutex.lock();
-		if (!(inputBuffer.empty())) {
-			value = inputBuffer.front();
-			inputBuffer.pop();
-		}
-		inputMutex.unlock();
-		
-		if (value != 0) {
-			auto output = sa2a(value);
-			lock_guard<mutex> outputGuard(outputMutex);
-			outputBuffer.push(make_pair(value, output));
-		}
+// getValueFromInputQueue
+// Retrieves the first value from inputQueue and pops inputQueue.
+// Thread safe and avoids temporal coupling.
+// Preconditions:
+//		inputQueue is a std::queue<int> with at least one item in it.
+//		inputMutex is a valid mutex object.
+int getValueFromInputQueue() {
+	inputMutex.lock();
+		auto value = inputQueue.front();
+		inputQueue.pop();
+	inputMutex.unlock();
+	return value;
+}
 
-		value = 0;
+// void fillOutputQueueWithSA2AfromInputQueue() {
+// Calls sa2a with values from inputQueue and fills outputQueue with the result.
+// Thread safe.
+// Preconditions:
+//		inputQueue is a std::queue<int>.
+//		outputQueue is a std::queue<std::pair<int, int>>
+void fillOutputQueueWithSA2AfromInputQueue() {
+	while (!(inputQueue.empty())) {
+		auto value = getValueFromInputQueue();
+		auto output = sa2a(value);
+		std::lock_guard<std::mutex> outputGuard(outputMutex);
+		outputQueue.push(std::make_pair(value, output));
 	}
 }
 
+// printResultsFromOutputQueue
+// Waits for a worker thread to put an item in OutputQueue then prints it.
+// Preconditions:
+//		outputQueue is a std::queue<std::pair<int, int>>
+void printResultsFromOutputQueue() {
+	while (outputQueue.empty());
+	auto resultPair = outputQueue.front();
+	outputQueue.pop();
+	std::cout << "sa2a(" << resultPair.first << ") = " << resultPair.second << std::endl;
+}
 
+// main
+// Spawns six threads. Collects one or more integers from the user then passes
+// delegates calling sa2a with them to the worker threads. Outputs the results
+// then waits for the threads to terminate before exiting.
 int main() {
-	cout << "Delegated Computation" << endl;
+	std::cout << "Delegated Computation" << std::endl;
 
 	// Spawn worker threads
-	vector<thread> workerPool (NUMBER_THREADS);
+	std::vector<std::thread> workerPool (NUMBER_THREADS);
 
-	// User Input
-	int input;
+	// Input numbers from user
 	while (true) {
-		cout << "Enter a positive integer (or 0 to end input): ";
-		cin >> input;
+		std::cout << "Enter a positive integer (or 0 to end input): ";
+		std::cin >> input;
 
-		if (cin.fail()) {
-			cin.clear();
-			cin.ignore(std::numeric_limits<std::streamsize>::max(),'\n');
-			cout << "Only integers are valid input." << endl;
+		if (std::cin.fail()) {
+			std::cin.clear();
+			std::cin.ignore(std::numeric_limits<std::streamsize>::max(),'\n');
+			std::cout << "Only integers are valid input." << std::endl;
 			continue;
 		}
 
 		else if (input < 1)
 			break;
 	
-		inputBuffer.push(input);
+		inputQueue.push(input);
 		totalInputs++;
 	}
 
-	// Delegate computations to worker threads
+	// Delegate all computations to worker threads
 	for (auto &worker : workerPool)
-		worker = thread(run);
+		worker = std::thread(fillOutputQueueWithSA2AfromInputQueue);
 	
-	// Output results
-	for (int i = 0; i < totalInputs; ++i) {
-		while (outputBuffer.empty());
+	// Print results as they become available
+	for (int i = 0; i < totalInputs; ++i)
+		printResultsFromOutputQueue();
 
-		auto resultPair = outputBuffer.front();
-		outputBuffer.pop();
-		cout << "sa2a(" << resultPair.first << ") = " << resultPair.second << endl;
-	}
-
-	
-	// Wait for all threads to terminate
+	// Terminate all threads
 	for (auto &worker : workerPool)
 		worker.join();
+
+	return 0;
 }
